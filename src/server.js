@@ -1,8 +1,11 @@
 const express = require('express')
 const mongoose = require('mongoose')
 const databaseConfig = require('./config/database')
+const sentryConfig = require('./config/sentry')
 const validate = require('express-validation')
+const Sentry = require('@sentry/node')
 const Youch = require('youch')
+
 
 class App {
   constructor() {
@@ -11,10 +14,14 @@ class App {
 
     this.middlewares()
     this.databaseConfig()
+    this.sentry()
     this.routes()
     this.exception()
   }
 
+  sentry() {
+    Sentry.init(sentryConfig)
+  }
   databaseConfig() {
     mongoose.connect(databaseConfig.uri, {
       useCreateIndex: true,
@@ -27,8 +34,13 @@ class App {
 
   routes() {
     this.express.use(require('./routes'))
+    this.express.use(Sentry.Handlers.requestHandler())
   }
   exception() {
+    if (process.env.NODE_ENV == 'production') {
+      this.express.use(Sentry.Handlers.errorHandler())
+    }
+
     this.express.use(async (err, req, res, next) => {
       if (err instanceof validate.ValidationError) {
         return res.status(err.status).json(err)
